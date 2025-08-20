@@ -1,4 +1,4 @@
-// fetch.mjs — Debug: hole Spiele-Liste direkt aus SIHF API
+// fetch.mjs — Debug mit JSONP-Callback
 
 import fs from "node:fs";
 import path from "node:path";
@@ -22,6 +22,17 @@ function writeDebug(msg) {
   fs.writeFileSync(path.join("public", "debug.txt"), msg, "utf8");
 }
 
+function parseMaybeJSONP(text) {
+  // echtes JSON versuchen
+  try { return JSON.parse(text); } catch {}
+  // JSONP: externalStatisticsCallback({...});
+  const m = text.match(/^externalStatisticsCallback\(([\s\S]*)\);\s*$/);
+  if (m) {
+    return JSON.parse(m[1]);
+  }
+  throw new Error("Antwort war weder JSON noch JSONP");
+}
+
 async function httpGetJSON(url) {
   const res = await fetch(url, {
     headers: {
@@ -30,19 +41,16 @@ async function httpGetJSON(url) {
     }
   });
   const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error("Antwort war kein JSON: " + text.slice(0,200));
-  }
+  return parseMaybeJSONP(text);
 }
 
 async function fetchResults() {
   const url = new URL(RESULTS_TABLE, BASE);
   url.searchParams.set("alias", "results");
   url.searchParams.set("page", "1");
-  url.searchParams.set("pageSize", "100"); // erstmal nur 100 Spiele holen
+  url.searchParams.set("pageSize", "100");
   url.searchParams.set("language", "de");
+  url.searchParams.set("callback", "externalStatisticsCallback"); // WICHTIG
 
   const j = await httpGetJSON(url.toString());
 
