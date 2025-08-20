@@ -2,7 +2,7 @@ name: Build SIHF JSON
 
 on:
   schedule:
-    - cron: "0 * * * *"       # stündlich
+    - cron: "0 * * * *"   # stündlich
   workflow_dispatch: {}
 
 jobs:
