@@ -162,22 +162,20 @@ async function fetchResults() {
   const season = currentSeasonNumber();
   const { start, end } = dateRange();
 
+  // Minimale Parameter → erstmal keine Filter erzwingen
   const baseParams = {
     alias: "results",
-    searchQuery: RESULTS_SEARCH_QUERY,
-    filterQuery: `${season}/${start}-${end}`, // Reihenfolge passend zu filterBy
-    filterBy: "Season,Date"
+    searchQuery: RESULTS_SEARCH_QUERY
+    // filterBy/Query erstmal weglassen
   };
 
-  // 1) Primär: JSON aus /cms/table
   try {
     const j = await call(RESULTS_TABLE, baseParams);
     return j?.data ?? [];
   } catch (e1) {
-    // 2) Fallback: /cms/export (manche Endpunkte nutzen JSONP/Export)
+    // Fallback via /cms/export
     try {
-      const j = await call(RESULTS_EXPORT, { ...baseParams /*, format: "json"*/ });
-      // manche "export"-Routen liefern data direkt, manche unter .data
+      const j = await call(RESULTS_EXPORT, baseParams);
       return j?.data ?? j ?? [];
     } catch (e2) {
       throw new Error(`Results failed:\n- table: ${e1.message}\n- export: ${e2.message}`);
