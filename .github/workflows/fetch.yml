@@ -1,16 +1,19 @@
 name: Fetch SIHF Results
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:   # manuell starten
   schedule:
-    - cron: "0 5 * * *"
+    - cron: "0 */6 * * *"   # alle 6 Stunden
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
+          persist-credentials: false   # wir setzen später Token selbst
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -18,13 +21,23 @@ jobs:
         with:
           node-version: 22
 
-      - name: Run fetch script
+      - name: Run fetch.mjs
         run: node fetch.mjs
 
-      - name: Commit results
+      - name: Commit updated results
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/results.json public/raw-results.txt public/debug.txt || true
-          git commit -m "Update results (skip ci)" || echo "No changes"
-          git push
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+
+          git add public/results.json public/debug.txt public/raw-results.json
+
+          # nur committen, wenn sich wirklich was geändert hat
+          if ! git diff --cached --quiet; then
+            git commit -m "Update results.json [skip ci]"
+            git push
+          else
+            echo "Keine Änderungen, kein Commit notwendig."
+          fi
+        env:
+          # GitHub Actions Token
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
