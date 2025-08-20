@@ -1,35 +1,28 @@
 name: Fetch SIHF Results
 
 on:
-  workflow_dispatch:   # manueller Start möglich
+  workflow_dispatch:
   schedule:
-    - cron: "0 5 * * *"   # jeden Tag um 05:00 UTC (07:00 CH-Zeit)
+    - cron: "0 5 * * *" # täglich 05:00 UTC
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # wichtig für Commits
+          fetch-depth: 0
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Install dependencies
-        run: npm ci || npm install
-
-      - name: Run fetch.mjs
-        run: node fetch.mjs
-
-      - name: Commit updated results.json and debug.txt
+      - name: Fetch and commit results
         run: |
+          node fetch.mjs
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/results.json public/debug.txt || true
+          git add public/results.json || true
           git commit -m "Update results.json [skip ci]" || echo "No changes to commit"
           git push
