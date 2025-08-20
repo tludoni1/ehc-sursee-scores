@@ -17,8 +17,8 @@ if (dns.setDefaultResultOrder) dns.setDefaultResultOrder("ipv4first");
 // === KONFIG ===
 const TEAM_FILTERS = ["EHC Sursee"]; // weitere Teams ergänzen, z. B. "EHC Sursee U13"
 const DAYS_BACK = 21;                // Tage rückwärts abfragen
-const DAYS_FWD  = 14;                // Tage vorwärts abfragen
-const MAX_DETAILS = 30;              // wie viele Spiele via Detail-API ergänzen (limitiert!)
+const DAYS_FWD  = 200;                // Tage vorwärts abfragen
+const MAX_DETAILS = 100;              // wie viele Spiele via Detail-API ergänzen (limitiert!)
 
 // === SIHF-API (aktuelle Domain) ===
 const HOST = "data.sihf.ch";
