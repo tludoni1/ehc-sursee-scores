@@ -159,24 +159,33 @@ async function call(path, params, { forceJsonp = false } = {}) {
 }
 
 async function fetchResults() {
-  const season = currentSeasonNumber();
-  const { start, end } = dateRange();
-
-  // Minimale Parameter → erstmal keine Filter erzwingen
   const baseParams = {
     alias: "results",
     searchQuery: RESULTS_SEARCH_QUERY
-    // filterBy/Query erstmal weglassen
   };
 
   try {
     const j = await call(RESULTS_TABLE, baseParams);
-    return j?.data ?? [];
+
+    // NEU: Rohantwort debuggen
+    ensurePublicDir();
+    fs.writeFileSync("public/raw-results.json", JSON.stringify(j, null, 2), "utf8");
+
+    // Wenn j.data existiert, nimm es, sonst alles
+    if (j?.data) return j.data;
+    return Array.isArray(j) ? j : [j];
+
   } catch (e1) {
-    // Fallback via /cms/export
     try {
       const j = await call(RESULTS_EXPORT, baseParams);
-      return j?.data ?? j ?? [];
+
+      // Auch hier: Rohantwort speichern
+      ensurePublicDir();
+      fs.writeFileSync("public/raw-results.json", JSON.stringify(j, null, 2), "utf8");
+
+      if (j?.data) return j.data;
+      return Array.isArray(j) ? j : [j];
+
     } catch (e2) {
       throw new Error(`Results failed:\n- table: ${e1.message}\n- export: ${e2.message}`);
     }
