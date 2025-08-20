@@ -67,17 +67,27 @@ async function fetchResults() {
   ensurePublicDir();
   fs.writeFileSync("public/raw-results.json", JSON.stringify(j, null, 2), "utf8");
 
-  // SPIELE: oft in j.rows
+  // Spiele liegen in j.rows, jede row ist ein Array
   if (Array.isArray(j?.rows)) {
-    return j.rows.map(r => {
-      const cells = r.cells || r; // manchmal heisst es cells, manchmal direkt
+    return j.rows.map(arr => {
+      const home = arr[3]?.name ?? "";
+      const away = arr[4]?.name ?? "";
+      const res  = arr[5] && arr[5].type === "result"
+        ? `${arr[5].homeTeam}:${arr[5].awayTeam}`
+        : "";
+      const status = arr[9]?.name ?? "";
+      const startDate = arr[9]?.startDateTime ?? null;
+
       return {
-        id: r.id || r.gameId,
-        startTime: cells[1]?.text || cells[0], // je nach Index
-        league: cells[2]?.text,
-        homeTeam: cells[3]?.text,
-        awayTeam: cells[4]?.text,
-        score: cells[5]?.text
+        gameId: arr[10]?.gameId ?? null,
+        date: arr[1],
+        time: arr[2],
+        weekday: arr[0],
+        homeTeam: home,
+        awayTeam: away,
+        score: res,
+        status: status,
+        startDateTime: startDate
       };
     });
   }
