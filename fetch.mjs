@@ -218,7 +218,11 @@ function normalizeFromDetail(d) {
 async function main() {
   try {
     const raw = await fetchResults();
-    const pre = raw.filter((item) => teamMatches(item, TEAM_FILTERS));
+
+    // HIER: Teamfilter vorerst deaktivieren
+    // const pre = raw.filter((item) => teamMatches(item, TEAM_FILTERS));
+    const pre = raw;
+
     let normalized = pre.map(normalizeFromResult);
 
     // Fehlende Felder via Detail-API ergänzen (limitiert)
