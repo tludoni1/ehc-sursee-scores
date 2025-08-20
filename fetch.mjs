@@ -1,7 +1,7 @@
-// fetch.mjs — EHC Sursee Scores Fetcher (robust, mit DNS-Fallback)
-// Läuft in GitHub Actions (Node 20). Schreibt immer:
+// fetch.mjs — EHC Sursee Scores Fetcher (robust, HOST=data.sihf.ch)
+// Artefakte, die IMMER geschrieben werden:
 //   public/results.json  (Liste der Spiele; evtl. leer)
-//   public/debug.txt     (kurzer Status/Fehlerlog)
+//   public/debug.txt     (Status/Fehler)
 
 import fs from "node:fs";
 import path from "node:path";
@@ -15,22 +15,24 @@ const execFileP = promisify(execFile);
 if (dns.setDefaultResultOrder) dns.setDefaultResultOrder("ipv4first");
 
 // === KONFIG ===
-const TEAM_FILTERS = ["EHC Sursee"]; // weitere Teams hier ergänzen, z. B. "EHC Sursee U13"
-const DAYS_BACK = 21;                // wie viele Tage rückwärts abfragen
-const DAYS_FWD  = 14;                // wie viele Tage vorwärts abfragen
-const MAX_DETAILS = 30;              // wie viele Spiele per Detail-API ergänzen (limitieren!)
+const TEAM_FILTERS = ["EHC Sursee"]; // weitere Teams ergänzen, z. B. "EHC Sursee U13"
+const DAYS_BACK = 21;                // Tage rückwärts abfragen
+const DAYS_FWD  = 14;                // Tage vorwärts abfragen
+const MAX_DETAILS = 30;              // wie viele Spiele via Detail-API ergänzen (limitiert!)
 
-// SIHF-API
-const HOST = "dvdata.sihf.ch";
+// === SIHF-API (aktuelle Domain) ===
+const HOST = "data.sihf.ch";
 const BASE = `https://${HOST}`;
-const RESULTS_PATH = "/statistic/api/cms/table";        // alias=results
-const DETAIL_PATH  = "/statistic/api/cms/gameoverview"; // alias=gameDetail
+const RESULTS_TABLE = "/statistic/api/cms/table";         // alias=results (JSON)
+const RESULTS_EXPORT = "/statistic/api/cms/export";       // alias=results (Fallback)
+const DETAIL_PATH    = "/statistic/api/cms/gameoverview"; // alias=gameDetail
 
-// Spalten-Setup wie in der R-Referenz (liefert u. a. Teams/Score/Zeit)
+// Spalten-Setup wie in älteren Referenzen genutzt (liefert u. a. Teams/Score/Zeit)
 const RESULTS_SEARCH_QUERY = "1,8,10,11//1,8,9,20,47,48,50,90,81";
 
 // Utils
-const fmt = (d) => d.toLocaleDateString("de-CH").replace(/(\d{2})\.(\d{2})\.(\d{4})/, "$1.$2.$3"); // dd.mm.yyyy
+const fmt = (d) =>
+  d.toLocaleDateString("de-CH").replace(/(\d{2})\.(\d{2})\.(\d{4})/, "$1.$2.$3"); // dd.mm.yyyy
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const nowIso = () => new Date().toISOString();
 
@@ -55,7 +57,6 @@ function teamMatches(item, filters) {
   const hay = JSON.stringify(item).toLowerCase();
   return filters.length === 0 || filters.some((f) => hay.includes(f.toLowerCase()));
 }
-
 function ensurePublicDir() {
   fs.mkdirSync("public", { recursive: true });
 }
@@ -68,7 +69,7 @@ function writeDebug(msg) {
   fs.writeFileSync(path.join("public", "debug.txt"), `[${nowIso()}]\n${msg}\n`, "utf8");
 }
 
-// ---------- DNS / Fallback-HTTP ----------
+// ---------- HTTP / DNS-Fallback ----------
 
 async function resolveHostIP(host) {
   // DNS over HTTPS (Google) – holt A-Record
@@ -84,41 +85,54 @@ async function resolveHostIP(host) {
   return ip;
 }
 
-async function curlFetchJson(urlStr, host) {
-  // Nutzt curl + --resolve, damit SNI/Cert korrekt bleiben
+async function curlFetchText(urlStr, host, extraHeaders = []) {
   const ip = await resolveHostIP(host);
   const args = [
-    "-sS", "--fail", "--max-time", "25",
+    "-sS", "--fail", "--max-time", "30",
     "--http1.1",
-    "-H", "accept: application/json",
     "--resolve", `${host}:443:${ip}`,
-    urlStr
   ];
+  // Header mitgeben
+  for (const [k, v] of extraHeaders) {
+    args.push("-H", `${k}: ${v}`);
+  }
+  args.push(urlStr);
   const { stdout } = await execFileP("curl", args);
-  return JSON.parse(stdout);
+  return stdout;
 }
 
-async function call(endpoint, params) {
-  const url = new URL(endpoint, BASE);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+function parseMaybeJSONP(text) {
+  // Versuche echtes JSON …
+  try { return JSON.parse(text); } catch {}
+  // … oder JSONP wie externalStatisticsCallback({...});
+  const m = text.match(/^[a-zA-Z_$][\w$]*\(([\s\S]*)\);\s*$/);
+  if (m) {
+    const inner = m[1];
+    return JSON.parse(inner);
+  }
+  throw new Error("Antwort war weder JSON noch erkennbares JSONP");
+}
 
-  // 1) Normaler Weg über fetch()
+async function httpGetJSON(url, headers = {}) {
+  // primär via fetch()
   try {
-    const res = await fetch(url.toString(), {
+    const res = await fetch(url, {
       headers: {
-        "accept": "application/json",
+        "accept": "application/json, text/javascript;q=0.9, */*;q=0.1",
         "cache-control": "no-cache",
         "accept-language": "de-CH,de;q=0.9,en;q=0.8",
-        "user-agent": "ehc-sursee-scores/1.0 (+github actions)"
+        "user-agent": "ehc-sursee-scores/1.0 (+github actions)",
+        ...headers
       }
     });
     const text = await res.text();
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}\nBODY: ${text.slice(0,800)}`);
-    return JSON.parse(text);
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}\nBODY: ${text.slice(0,800)}`);
+    return parseMaybeJSONP(text);
   } catch (err) {
-    // 2) Fallback via curl + --resolve (umgeht DNS-Probleme im Runner)
+    // Fallback über curl + --resolve (umgeht DNS/HTTP-Schrullen)
     try {
-      return await curlFetchJson(url.toString(), HOST);
+      const text = await curlFetchText(url, HOST, Object.entries(headers));
+      return parseMaybeJSONP(text);
     } catch (err2) {
       const code1 = err?.cause?.code || err?.code || "UNKNOWN";
       const code2 = err2?.cause?.code || err2?.code || "UNKNOWN";
@@ -130,23 +144,50 @@ async function call(endpoint, params) {
   }
 }
 
-// ---------- API-spezifische Calls ----------
+// ---------- API-Calls ----------
+
+async function call(path, params, { forceJsonp = false } = {}) {
+  const url = new URL(path, BASE);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  // Einheitlich Deutsch
+  if (!url.searchParams.has("language")) url.searchParams.set("language", "de");
+  // Falls JSONP erzwungen werden soll
+  if (forceJsonp && !url.searchParams.has("callback")) {
+    url.searchParams.set("callback", "externalStatisticsCallback");
+  }
+  return httpGetJSON(url.toString());
+}
 
 async function fetchResults() {
   const season = currentSeasonNumber();
   const { start, end } = dateRange();
-  const params = {
+
+  const baseParams = {
     alias: "results",
     searchQuery: RESULTS_SEARCH_QUERY,
     filterQuery: `${season}/${start}-${end}`, // Reihenfolge passend zu filterBy
     filterBy: "Season,Date"
   };
-  const json = await call(RESULTS_PATH, params);
-  return json?.data ?? [];
+
+  // 1) Primär: JSON aus /cms/table
+  try {
+    const j = await call(RESULTS_TABLE, baseParams);
+    return j?.data ?? [];
+  } catch (e1) {
+    // 2) Fallback: /cms/export (manche Endpunkte nutzen JSONP/Export)
+    try {
+      const j = await call(RESULTS_EXPORT, { ...baseParams /*, format: "json"*/ });
+      // manche "export"-Routen liefern data direkt, manche unter .data
+      return j?.data ?? j ?? [];
+    } catch (e2) {
+      throw new Error(`Results failed:\n- table: ${e1.message}\n- export: ${e2.message}`);
+    }
+  }
 }
 
 async function fetchDetail(gameId) {
-  return call(DETAIL_PATH, { alias: "gameDetail", searchQuery: String(gameId) });
+  // Detail liefert häufig JSONP -> erzwinge JSONP
+  return call(DETAIL_PATH, { alias: "gameDetail", searchQuery: String(gameId) }, { forceJsonp: true });
 }
 
 // ---------- Normalisierung ----------
@@ -200,14 +241,12 @@ async function main() {
     const out = normalized.filter((g) => !!g.id && !seen.has(g.id) && seen.add(g.id));
 
     writeJSON("results.json", out);
-    writeDebug(`OK: wrote ${out.length} games`);
+    writeDebug(`OK: wrote ${out.length} games (HOST=${HOST})`);
     console.log(`Wrote public/results.json with ${out.length} games`);
   } catch (err) {
-    // Nie ohne Artefakte beenden: leeres results + Fehlerlog
     writeJSON("results.json", []);
-    writeDebug(`ERROR @ ${nowIso()}:\n${err?.message || err}\n`);
+    writeDebug(`ERROR @ ${nowIso()}:\n${err?.message || err}\n(HOST=${HOST})\n`);
     console.error(err);
-    // KEIN process.exit(1); Deploy soll trotzdem laufen
   }
 }
 
