@@ -16,7 +16,7 @@ if (dns.setDefaultResultOrder) dns.setDefaultResultOrder("ipv4first");
 
 // === KONFIG ===
 const TEAM_FILTERS = ["sursee"]; // weitere Teams ergänzen, z. B. "EHC Sursee U13"
-const DAYS_BACK = 21;                // Tage rückwärts abfragen
+const DAYS_BACK = 250;                // Tage rückwärts abfragen
 const DAYS_FWD  = 200;                // Tage vorwärts abfragen
 const MAX_DETAILS = 100;              // wie viele Spiele via Detail-API ergänzen (limitiert!)
 
