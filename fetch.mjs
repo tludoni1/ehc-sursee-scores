@@ -79,36 +79,26 @@ async function call(path, params) {
 // ---------- fetchResults ----------
 async function fetchResults() {
   const { start, end } = dateRange();
+
   const baseParams = {
     alias: "results",
     searchQuery: RESULTS_SEARCH_QUERY,
     filterBy: "Date",
-    filterQuery: `${start}-${end}`
+    filterQuery: `${start}-${end}`,
+    page: "1",
+    pageSize: "1000"
   };
+
   const j = await call(RESULTS_TABLE, baseParams);
 
   ensurePublicDir();
-  fs.writeFileSync("public/raw-results.json", JSON.stringify(j,null,2),"utf8");
+  fs.writeFileSync("public/raw-results.json", JSON.stringify(j, null, 2), "utf8");
 
-  // === wichtig: direktes Array von Arrays erkennen ===
-  if (Array.isArray(j) && Array.isArray(j[0])) {
-    return j.map(arr => {
-      return {
-        weekday: arr[0],
-        date: arr[1],
-        time: arr[2],
-        homeTeam: arr[3]?.name,
-        awayTeam: arr[4]?.name,
-        score: arr[5]?.type === "result" ? `${arr[5].homeTeam}:${arr[5].awayTeam}` : "",
-        status: arr[9]?.name,
-        startDateTime: arr[9]?.startDateTime,
-        gameId: arr[10]?.gameId
-      };
-    });
-  }
-
+  // hier stehen die eigentlichen Spiele
   if (Array.isArray(j?.rows)) return j.rows;
+
   if (Array.isArray(j?.data)) return j.data;
+  if (Array.isArray(j)) return j;
   return [];
 }
 
