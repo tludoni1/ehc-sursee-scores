@@ -58,18 +58,34 @@ async function fetchResults() {
   const baseParams = {
     alias: "results",
     searchQuery: RESULTS_SEARCH_QUERY,
-    filterBy: "Date",             // nur Datum filtern
-    filterQuery: `${start}-${end}` // großer Zeitraum
+    filterBy: "Date",
+    filterQuery: `${start}-${end}`
   };
 
   const j = await call(RESULTS_TABLE, baseParams);
 
-  // Debug: alles abspeichern
   ensurePublicDir();
   fs.writeFileSync("public/raw-results.json", JSON.stringify(j, null, 2), "utf8");
-  writeDebug(`URL: ${BASE}${RESULTS_TABLE}?${new URLSearchParams(baseParams)}\nKeys: ${Object.keys(j)}`);
 
-  return j?.data ?? [];
+  // SPIELE: oft in j.rows
+  if (Array.isArray(j?.rows)) {
+    return j.rows.map(r => {
+      const cells = r.cells || r; // manchmal heisst es cells, manchmal direkt
+      return {
+        id: r.id || r.gameId,
+        startTime: cells[1]?.text || cells[0], // je nach Index
+        league: cells[2]?.text,
+        homeTeam: cells[3]?.text,
+        awayTeam: cells[4]?.text,
+        score: cells[5]?.text
+      };
+    });
+  }
+
+  // fallback: falls doch data existiert
+  if (Array.isArray(j?.data)) return j.data;
+
+  return [];
 }
 
 async function main() {
