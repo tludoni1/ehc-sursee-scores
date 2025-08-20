@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          persist-credentials: false   # wir setzen später Token selbst
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -24,20 +24,19 @@ jobs:
       - name: Run fetch.mjs
         run: node fetch.mjs
 
-      - name: Commit updated results
+      - name: Commit updated results (with history cleanup)
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
 
           git add public/results.json public/debug.txt public/raw-results.json
 
-          # nur committen, wenn sich wirklich was geändert hat
           if ! git diff --cached --quiet; then
             git commit -m "Update results.json [skip ci]"
-            git push
+            # ⚡ force push, damit der letzte Commit überschrieben wird
+            git push --force origin HEAD:main
           else
             echo "Keine Änderungen, kein Commit notwendig."
           fi
         env:
-          # GitHub Actions Token
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
