@@ -3,26 +3,28 @@ name: Fetch SIHF Results
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 5 * * *" # täglich 05:00 UTC
+    - cron: "0 5 * * *"
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Fetch and commit results
+      - name: Run fetch script
+        run: node fetch.mjs
+
+      - name: Commit results
         run: |
-          node fetch.mjs
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/results.json || true
-          git commit -m "Update results.json [skip ci]" || echo "No changes to commit"
+          git add public/results.json public/raw-results.txt public/debug.txt || true
+          git commit -m "Update results (skip ci)" || echo "No changes"
           git push
