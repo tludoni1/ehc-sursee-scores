@@ -1,14 +1,20 @@
-// fetch.mjs (robuste Version mit Debug-Ausgabe)
+// fetch.mjs (Patch: IPv4 first + besseres Debug)
 import fs from "node:fs";
 import path from "node:path";
+import dns from "node:dns";
+
+// Wichtig: viele WAF/DNS-Setups zicken bei IPv6 – IPv4 bevorzugen:
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder("ipv4first");
+}
 
 // === KONFIG ===
-const TEAM_FILTERS = ["EHC Sursee"]; // weitere Teams hier ergänzen
+const TEAM_FILTERS = ["EHC Sursee"];
 const DAYS_BACK = 21;
 const DAYS_FWD  = 14;
 const MAX_DETAILS = 30;
 
-// SIHF-API Basis (siehe R-Doku)
+// SIHF-API Basis
 const BASE = "https://dvdata.sihf.ch";
 const RESULTS_PATH = "/statistic/api/cms/table";        // alias=results
 const DETAIL_PATH  = "/statistic/api/cms/gameoverview"; // alias=gameDetail
@@ -43,22 +49,27 @@ function teamMatches(item, filters) {
 async function call(endpoint, params) {
   const url = new URL(endpoint, BASE);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), {
-    headers: {
-      "accept": "application/json",
-      // Ein paar Server reagieren sensibler ohne klaren UA/Referer:
-      "user-agent": "ehc-sursee-scores/1.0 (+github actions)",
-      "referer": "https://www.sihf.ch/"
-    }
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}\nBODY: ${text.slice(0, 800)}`);
-  }
   try {
+    const res = await fetch(url.toString(), {
+      // explizit HTTP/1.1 erzwingen können wir bei fetch nicht,
+      // aber Header helfen manchen CDNs/WAFs:
+      headers: {
+        "accept": "application/json",
+        "cache-control": "no-cache",
+        "accept-language": "de-CH,de;q=0.9,en;q=0.8",
+        "user-agent": "ehc-sursee-scores/1.0 (+github actions)"
+      }
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}\nBODY: ${text.slice(0, 800)}`);
+    }
     return JSON.parse(text);
-  } catch (e) {
-    throw new Error(`Antwort war kein JSON für ${url}\nBODY: ${text.slice(0, 800)}`);
+  } catch (err) {
+    // Wirf mit maximaler Ursache weiter, damit main() sauber loggt:
+    const code = err?.cause?.code || err?.code || "UNKNOWN";
+    const msg  = `${err?.message || err}\nCAUSE_CODE: ${code}\nCAUSE: ${String(err?.cause || "")}`;
+    throw new Error(msg);
   }
 }
 
@@ -134,8 +145,9 @@ async function main() {
     const seen = new Set();
     const out = normalized.filter((g) => !!g.id && !seen.has(g.id) && seen.add(g.id));
 
-    writeJSON("results.json", out);
-    writeDebug(`OK: wrote ${out.length} games`);
+    writeJSON("results.json", []);
+    writeDebug(`ERROR @ ${nowIso()}:\n${err?.message || err}\n`);
+    console.error(err);
     console.log(`Wrote public/results.json with ${out.length} games`);
   } catch (err) {
     // NIE mit leeren Händen rausgehen: leere results + Fehlerlog schreiben
